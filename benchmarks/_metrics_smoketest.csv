@@ -1,0 +1,3 @@
+llamacpp:n_busy_slots_per_decode,llamacpp:n_decode_total,llamacpp:prompt_tokens_total,llamacpp:requests_deferred,llamacpp:requests_processing,llamacpp:tokens_predicted_total,t
+0.0,0.0,0.0,0.0,0.0,0.0,1778057627.7
+0.0,0.0,0.0,0.0,0.0,0.0,1778057631.0

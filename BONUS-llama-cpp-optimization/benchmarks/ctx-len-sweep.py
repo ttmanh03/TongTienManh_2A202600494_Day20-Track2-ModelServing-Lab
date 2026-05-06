@@ -19,17 +19,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-LLAMA_BENCH = Path("BONUS-llama-cpp-optimization/llama.cpp/build/bin/llama-bench")
-LLAMA_BENCH_EXE = LLAMA_BENCH.with_suffix(".exe")
+LLAMA_BENCH_CANDIDATES = [
+    Path("BONUS-llama-cpp-optimization/llama.cpp/build/bin/llama-bench"),
+    Path("BONUS-llama-cpp-optimization/llama.cpp/build-mingw/bin/llama-bench"),
+    Path("BONUS-llama-cpp-optimization/llama.cpp/build-msvc/bin/llama-bench"),
+]
 
-PP_RE = re.compile(r"\|\s*pp(\d+)\s*\|\s*([0-9.]+)\s*±")
+PP_RE = re.compile(r"\|\s*pp(\d+)\s*\|\s*([0-9.]+)")
 
 
 def find_bench() -> Path:
-    for p in (LLAMA_BENCH, LLAMA_BENCH_EXE):
-        if p.exists():
-            return p
-    print("ERROR: build llama.cpp first.", file=sys.stderr)
+    for base in LLAMA_BENCH_CANDIDATES:
+        for p in (base, base.with_suffix(".exe")):
+            if p.exists():
+                return p
+    print("ERROR: llama-bench not found. Build llama.cpp first.", file=sys.stderr)
     sys.exit(1)
 
 

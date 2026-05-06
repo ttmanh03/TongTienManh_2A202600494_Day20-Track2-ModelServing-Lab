@@ -16,16 +16,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-LLAMA_BENCH = Path("BONUS-llama-cpp-optimization/llama.cpp/build/bin/llama-bench")
-LLAMA_BENCH_EXE = LLAMA_BENCH.with_suffix(".exe")
-TG_RE = re.compile(r"\|\s*tg128\s*\|\s*([0-9.]+)\s*±")
+LLAMA_BENCH_CANDIDATES = [
+    Path("BONUS-llama-cpp-optimization/llama.cpp/build/bin/llama-bench"),
+    Path("BONUS-llama-cpp-optimization/llama.cpp/build-mingw/bin/llama-bench"),
+    Path("BONUS-llama-cpp-optimization/llama.cpp/build-msvc/bin/llama-bench"),
+]
+DECODE_TOKENS = 64
+TG_RE = re.compile(rf"\|\s*tg{DECODE_TOKENS}\s*\|\s*([0-9.]+)")
 
 
 def find_bench() -> Path:
-    for p in (LLAMA_BENCH, LLAMA_BENCH_EXE):
-        if p.exists():
-            return p
-    print("ERROR: build llama.cpp first.", file=sys.stderr)
+    for base in LLAMA_BENCH_CANDIDATES:
+        for p in (base, base.with_suffix(".exe")):
+            if p.exists():
+                return p
+    print("ERROR: llama-bench not found. Build llama.cpp first.", file=sys.stderr)
     sys.exit(1)
 
 
@@ -48,16 +53,17 @@ def main() -> int:
     rows: list[dict] = []
     for ngl in grid:
         cmd = [str(bench), "-m", model, "-t", str(threads), "-ngl", str(ngl),
-               "-p", "0", "-n", "64", "-r", "2"]
-        out = subprocess.run(cmd, capture_output=True, text=True, check=False).stdout
+               "-p", "0", "-n", str(DECODE_TOKENS), "-r", "2"]
+        cp = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        out = (cp.stdout or "") + "\n" + (cp.stderr or "")
         m = TG_RE.search(out)
         tps = float(m.group(1)) if m else 0.0
         rows.append({"ngl": ngl, "tok_s": tps})
-        print(f"   -ngl {ngl:3d}  tg128={tps:6.1f} tok/s")
+        print(f"   -ngl {ngl:3d}  tg{DECODE_TOKENS}={tps:6.1f} tok/s")
 
     md = "# Bonus — GPU-offload sweep\n\n"
     md += f"Model: `{Path(model).name}`  ·  threads: `{threads}`\n\n"
-    md += "| -ngl | tg128 (tok/s) |\n|--:|--:|\n"
+    md += f"| -ngl | tg{DECODE_TOKENS} (tok/s) |\n|--:|--:|\n"
     md += "\n".join(f"| {r['ngl']} | {r['tok_s']:.1f} |" for r in rows)
     md += (
         "\n\nWhen the model fits in VRAM, `-ngl 99` (full offload) is fastest. "

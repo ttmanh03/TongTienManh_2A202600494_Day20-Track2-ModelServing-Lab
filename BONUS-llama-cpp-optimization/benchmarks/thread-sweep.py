@@ -18,18 +18,27 @@ import subprocess
 import sys
 from pathlib import Path
 
-LLAMA_BENCH = Path("BONUS-llama-cpp-optimization/llama.cpp/build/bin/llama-bench")
-LLAMA_BENCH_EXE = LLAMA_BENCH.with_suffix(".exe")
+LLAMA_BENCH_CANDIDATES = [
+    Path("BONUS-llama-cpp-optimization/llama.cpp/build/bin/llama-bench"),
+    Path("BONUS-llama-cpp-optimization/llama.cpp/build-mingw/bin/llama-bench"),
+    Path("BONUS-llama-cpp-optimization/llama.cpp/build-msvc/bin/llama-bench"),
+]
 
-# llama-bench prints a markdown-ish table; this regex grabs the tg128 (decode) row.
-TG_RE = re.compile(r"\|\s*tg128\s*\|\s*([0-9.]+)\s*±")
+DECODE_TOKENS = 64
+
+# llama-bench prints a markdown-ish table; this regex grabs the decode row.
+# When we run with "-n 64", the test name is typically "tg64".
+TG_RE = re.compile(rf"\|\s*tg{DECODE_TOKENS}\s*\|\s*([0-9.]+)")
 
 
 def find_bench() -> Path:
-    for p in (LLAMA_BENCH, LLAMA_BENCH_EXE):
-        if p.exists():
-            return p
-    print(f"ERROR: llama-bench not found at {LLAMA_BENCH}", file=sys.stderr)
+    for base in LLAMA_BENCH_CANDIDATES:
+        for p in (base, base.with_suffix(".exe")):
+            if p.exists():
+                return p
+    print("ERROR: llama-bench not found. Tried:", file=sys.stderr)
+    for base in LLAMA_BENCH_CANDIDATES:
+        print(f"   - {base}", file=sys.stderr)
     print("       Build llama.cpp first — see BONUS-llama-cpp-optimization/01-build-from-source.md.", file=sys.stderr)
     sys.exit(1)
 
@@ -57,15 +66,16 @@ def run_one(bench: Path, model: str, threads: int, n_gpu_layers: int) -> float:
         str(bench), "-m", model,
         "-t", str(threads),
         "-ngl", str(n_gpu_layers),
-        "-p", "0", "-n", "64",
+        "-p", "0", "-n", str(DECODE_TOKENS),
         "-r", "2",
     ]
     print(f"   running: {' '.join(cmd[1:])}")
-    out = subprocess.run(cmd, capture_output=True, text=True, check=False).stdout
+    cp = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    out = (cp.stdout or "") + "\n" + (cp.stderr or "")
     m = TG_RE.search(out)
     if not m:
         # Fall back: scan for any decimal followed by t/s
-        m = re.search(r"([0-9.]+)\s*tokens/s", out)
+        m = re.search(r"\|\s*tg\d+\s*\|\s*([0-9.]+)", out)
     return float(m.group(1)) if m else 0.0
 
 
@@ -87,7 +97,7 @@ def main() -> int:
     for t in grid:
         tps = run_one(bench, model, t, n_gpu)
         rows.append({"threads": t, "tok_s": tps})
-        print(f"   t={t:3d}  tg128={tps:6.1f} tok/s")
+        print(f"   t={t:3d}  tg{DECODE_TOKENS}={tps:6.1f} tok/s")
 
     out_dir = Path("benchmarks")
     out_dir.mkdir(exist_ok=True)
@@ -95,7 +105,7 @@ def main() -> int:
     best = max(rows, key=lambda r: r["tok_s"]) if rows else {"threads": 0, "tok_s": 0}
     md = "# Bonus — Thread sweep\n\n"
     md += f"Model: `{Path(model).name}`  ·  GPU layers: `{n_gpu}`\n\n"
-    md += "| threads | tg128 (tok/s) |\n|---:|---:|\n"
+    md += f"| threads | tg{DECODE_TOKENS} (tok/s) |\n|---:|---:|\n"
     md += "\n".join(f"| {r['threads']} | {r['tok_s']:.1f} |" for r in rows)
     md += f"\n\n**Best**: `-t {best['threads']}` at {best['tok_s']:.1f} tok/s.\n\n"
     md += (

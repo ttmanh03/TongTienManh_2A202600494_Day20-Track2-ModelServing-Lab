@@ -24,6 +24,18 @@ TEMPLATE_MARKERS = [
 ]
 
 
+def read_text_utf8(path: Path) -> str:
+    """Read a text file robustly across OS defaults.
+
+    On some Windows setups, the default encoding can be cp1252/cp1258 and will
+    throw UnicodeDecodeError for Vietnamese UTF-8 content.
+    """
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return path.read_text(encoding="utf-8", errors="replace")
+
+
 def check_file(path: Path, label: str, problems: list[str]) -> bool:
     if not path.exists():
         problems.append(f"MISSING  {label}: {path}")
@@ -51,7 +63,7 @@ def check_reflection_edited(path: Path, problems: list[str]) -> bool:
     if not path.exists():
         problems.append(f"MISSING  submission/REFLECTION.md")
         return False
-    text = path.read_text()
+    text = read_text_utf8(path)
     leftover = []
     for pattern in TEMPLATE_MARKERS:
         # Some patterns are line-anchored (start with ^), others are inline.
@@ -71,7 +83,7 @@ def check_active_model(active_json: Path, problems: list[str]) -> bool:
     if not check_file(active_json, "models/active.json", problems):
         return False
     try:
-        cfg = json.loads(active_json.read_text())
+        cfg = json.loads(read_text_utf8(active_json))
     except Exception as exc:
         problems.append(f"CORRUPT  models/active.json — {exc}")
         return False

@@ -21,6 +21,27 @@ if (-not $python) {
 $pyVer = (& python --version) 2>&1
 Write-Host "    Python: $pyVer"
 
+# Enforce supported versions on Windows to avoid source builds (long paths / toolchain issues).
+try {
+    $ver = (& python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    $parts = $ver -split '\.'
+    $maj = [int]$parts[0]
+    $min = [int]$parts[1]
+} catch {
+    Write-Host "ERROR: Failed to read Python version. Ensure 'python' works in this terminal." -ForegroundColor Red
+    exit 1
+}
+
+if ($maj -ne 3 -or $min -lt 10 -or $min -gt 12) {
+    Write-Host "ERROR: This lab's Windows path supports Python 3.10–3.12. You are using Python $ver." -ForegroundColor Red
+    Write-Host "Why: llama-cpp-python often has prebuilt Windows wheels only for 3.10–3.12; newer versions fall back to source builds and may fail (e.g., Windows Long Path / C++ toolchain)." -ForegroundColor Yellow
+    Write-Host "Fix:" -ForegroundColor Yellow
+    Write-Host "  1) Install Python 3.12 (x64) from https://www.python.org/downloads/" -ForegroundColor Yellow
+    Write-Host "  2) Recreate venv with:  py -3.12 -m venv .venv" -ForegroundColor Yellow
+    Write-Host "  3) Run this setup script again" -ForegroundColor Yellow
+    exit 1
+}
+
 # 2. virtualenv
 if (-not (Test-Path '.venv')) {
     Write-Host "==> Creating .venv"
@@ -42,7 +63,7 @@ if ($env:LLAMA_CUDA -eq '1') {
     pip install --upgrade --force-reinstall --no-cache-dir llama-cpp-python
 } else {
     Write-Host "==> Installing prebuilt llama-cpp-python (CPU)"
-    pip install --upgrade llama-cpp-python
+    pip install --upgrade --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu llama-cpp-python
 }
 
 # 4. Probe + download model
